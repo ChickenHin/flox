@@ -11,8 +11,8 @@ name: Build matrix
 # platform coverage.
 
 on:
-  push:
-    branches: [main]
+  # push:
+  #   branches: [main]
   pull_request:
 
 concurrency:
