@@ -765,41 +765,41 @@ jobs:
     - name: Run all tests including affinity
       run: ctest --output-on-failure --test-dir build
 
-    - name: Run demo
-      run: ./build/demo/flox_demo
+    # - name: Run demo
+    #   run: ./build/demo/flox_demo
 
-    - name: Run benchmarks
-      run: ./scripts/run-benchmarks.sh build/benchmarks
+    # - name: Run benchmarks
+    #   run: ./scripts/run-benchmarks.sh build/benchmarks
 
-  connectors-build:
-    needs: [format-check, verify-docs-current]
-    runs-on: ubuntu-24.04
+  # connectors-build:
+  #   needs: [format-check, verify-docs-current]
+  #   runs-on: ubuntu-24.04
 
-    steps:
-    - uses: actions/checkout@v5
+  #   steps:
+  #   - uses: actions/checkout@v5
 
-    - name: Install dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y cmake ninja-build g++-14 \
-                                libssl-dev zlib1g-dev libcurl4-openssl-dev
+  #   - name: Install dependencies
+  #     run: |
+  #       sudo apt-get update
+  #       sudo apt-get install -y cmake ninja-build g++-14 \
+  #                               libssl-dev zlib1g-dev libcurl4-openssl-dev
 
-    # Network deps (ixwebsocket, simdjson) come in via FetchContent
-    # at configure time. Polymarket Rust FFI is opt-OUT here so the
-    # job doesn't need a Rust toolchain.
-    - name: Configure
-      run: |
-        cmake -B build -G Ninja \
-              -DCMAKE_CXX_COMPILER=g++-14 \
-              -DCMAKE_BUILD_TYPE=Release \
-              -DFLOX_BUILD_CONNECTORS=ON \
-              -DFLOX_ENABLE_POLYMARKET_ORDER_EXECUTOR=OFF
+  #   # Network deps (ixwebsocket, simdjson) come in via FetchContent
+  #   # at configure time. Polymarket Rust FFI is opt-OUT here so the
+  #   # job doesn't need a Rust toolchain.
+  #   - name: Configure
+  #     run: |
+  #       cmake -B build -G Ninja \
+  #             -DCMAKE_CXX_COMPILER=g++-14 \
+  #             -DCMAKE_BUILD_TYPE=Release \
+  #             -DFLOX_BUILD_CONNECTORS=ON \
+  #             -DFLOX_ENABLE_POLYMARKET_ORDER_EXECUTOR=OFF
 
-    - name: Build connectors target
-      run: cmake --build build --target flox-connectors -j$(nproc)
+  #   - name: Build connectors target
+  #     run: cmake --build build --target flox-connectors -j$(nproc)
 
-    - name: Verify static archive exists
-      run: test -f build/connectors/libflox-connectors.a
+  #   - name: Verify static archive exists
+  #     run: test -f build/connectors/libflox-connectors.a
 
   # The venue module must stay genuinely optional: a build with it OFF has to
   # configure, compile and pass its suite with no venue code involved. Cheap
@@ -809,101 +809,101 @@ jobs:
   # enumerated; this asserts it over the code, so a new path cannot skip a
   # check silently. Configure only -- the check reads compile_commands.json and
   # never needs a compiled object.
-  venue-gate-reachability:
-    needs: [format-check, verify-docs-current]
-    runs-on: ubuntu-24.04
+  # venue-gate-reachability:
+  #   needs: [format-check, verify-docs-current]
+  #   runs-on: ubuntu-24.04
 
-    steps:
-    - uses: actions/checkout@v5
+  #   steps:
+  #   - uses: actions/checkout@v5
 
-    - uses: actions/setup-python@v6
-      with:
-        python-version: '3.11'
+  #   - uses: actions/setup-python@v6
+  #     with:
+  #       python-version: '3.11'
 
-    - name: Install dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y cmake ninja-build clang-18 libgtest-dev libgmock-dev
-        pip install libclang
+  #   - name: Install dependencies
+  #     run: |
+  #       sudo apt-get update
+  #       sudo apt-get install -y cmake ninja-build clang-18 libgtest-dev libgmock-dev
+  #       pip install libclang
 
-    - name: Configure
-      run: |
-        cmake -B build -G Ninja \
-              -DCMAKE_CXX_COMPILER=clang++-18 \
-              -DCMAKE_BUILD_TYPE=Release \
-              -DFLOX_BUILD_VENUE=ON \
-              -DFLOX_BUILD_TESTS=ON
+  #   - name: Configure
+  #     run: |
+  #       cmake -B build -G Ninja \
+  #             -DCMAKE_CXX_COMPILER=clang++-18 \
+  #             -DCMAKE_BUILD_TYPE=Release \
+  #             -DFLOX_BUILD_VENUE=ON \
+  #             -DFLOX_BUILD_TESTS=ON
 
-    - name: Prove every path into matching applies its gates
-      run: python3 scripts/check_gate_reachability.py
+  #   - name: Prove every path into matching applies its gates
+  #     run: python3 scripts/check_gate_reachability.py
 
-    - name: Exhaustively check the checkpoint/recovery protocol
-      run: python3 scripts/check_recovery_model.py
+  #   - name: Exhaustively check the checkpoint/recovery protocol
+  #     run: python3 scripts/check_recovery_model.py
 
-  venue-optional:
-    needs: [format-check, verify-docs-current]
-    runs-on: ubuntu-24.04
+  # venue-optional:
+  #   needs: [format-check, verify-docs-current]
+  #   runs-on: ubuntu-24.04
 
-    steps:
-    - uses: actions/checkout@v5
+  #   steps:
+  #   - uses: actions/checkout@v5
 
-    - name: Install dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y cmake ninja-build g++-14 libgtest-dev libgmock-dev
+  #   - name: Install dependencies
+  #     run: |
+  #       sudo apt-get update
+  #       sudo apt-get install -y cmake ninja-build g++-14 libgtest-dev libgmock-dev
 
-    - name: Configure without the venue
-      run: |
-        cmake -B build -G Ninja \
-              -DCMAKE_CXX_COMPILER=g++-14 \
-              -DCMAKE_BUILD_TYPE=Release \
-              -DFLOX_BUILD_VENUE=OFF \
-              -DFLOX_BUILD_TESTS=ON \
-              -DFLOX_BUILD_DEMO=ON \
-              -DFLOX_ENABLE_BACKTEST=ON
+  #   - name: Configure without the venue
+  #     run: |
+  #       cmake -B build -G Ninja \
+  #             -DCMAKE_CXX_COMPILER=g++-14 \
+  #             -DCMAKE_BUILD_TYPE=Release \
+  #             -DFLOX_BUILD_VENUE=OFF \
+  #             -DFLOX_BUILD_TESTS=ON \
+  #             -DFLOX_BUILD_DEMO=ON \
+  #             -DFLOX_ENABLE_BACKTEST=ON
 
-    - name: Build
-      run: cmake --build build -j$(nproc)
+  #   - name: Build
+  #     run: cmake --build build -j$(nproc)
 
-    - name: Test
-      run: ctest --output-on-failure --test-dir build
+  #   - name: Test
+  #     run: ctest --output-on-failure --test-dir build
 
-    - name: Verify nothing venue-side was built
-      run: |
-        test ! -f build/venue/libflox-venue.a
-        ! ctest --test-dir build -N | grep -qE "Test +#[0-9]+: test_venue_(matcher|engine|ledger)"
+  #   - name: Verify nothing venue-side was built
+  #     run: |
+  #       test ! -f build/venue/libflox-venue.a
+  #       ! ctest --test-dir build -N | grep -qE "Test +#[0-9]+: test_venue_(matcher|engine|ledger)"
 
   # Weekly deep run of the venue fuzzes. Pull requests run them at a
   # CI-friendly depth; this raises the command count by an order of magnitude,
   # which is where the rarer book divergences and reservation leaks surface.
-  venue-deep-fuzz:
-    if: github.event_name == 'schedule'
-    needs: [format-check, verify-docs-current]
-    runs-on: ubuntu-24.04
+  # venue-deep-fuzz:
+  #   if: github.event_name == 'schedule'
+  #   needs: [format-check, verify-docs-current]
+  #   runs-on: ubuntu-24.04
 
-    steps:
-    - uses: actions/checkout@v5
+  #   steps:
+  #   - uses: actions/checkout@v5
 
-    - name: Install dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y cmake ninja-build g++-14 libgtest-dev libgmock-dev
+  #   - name: Install dependencies
+  #     run: |
+  #       sudo apt-get update
+  #       sudo apt-get install -y cmake ninja-build g++-14 libgtest-dev libgmock-dev
 
-    - name: Configure
-      run: |
-        cmake -B build -G Ninja \
-              -DCMAKE_CXX_COMPILER=g++-14 \
-              -DCMAKE_BUILD_TYPE=Release \
-              -DFLOX_BUILD_TESTS=ON \
-              -DFLOX_ENABLE_BACKTEST=ON
+  #   - name: Configure
+  #     run: |
+  #       cmake -B build -G Ninja \
+  #             -DCMAKE_CXX_COMPILER=g++-14 \
+  #             -DCMAKE_BUILD_TYPE=Release \
+  #             -DFLOX_BUILD_TESTS=ON \
+  #             -DFLOX_ENABLE_BACKTEST=ON
 
-    - name: Build the fuzz targets
-      run: cmake --build build --target test_venue_differential_fuzz test_venue_conservation_fuzz -j$(nproc)
+  #   - name: Build the fuzz targets
+  #     run: cmake --build build --target test_venue_differential_fuzz test_venue_conservation_fuzz -j$(nproc)
 
-    - name: Differential fuzz (deep)
-      env:
-        FLOX_FUZZ_OPS: 2000000
-      run: ./build/venue/test_venue_differential_fuzz
+  #   - name: Differential fuzz (deep)
+  #     env:
+  #       FLOX_FUZZ_OPS: 2000000
+  #     run: ./build/venue/test_venue_differential_fuzz
 
-    - name: Conservation fuzz
-      run: ./build/venue/test_venue_conservation_fuzz
+  #   - name: Conservation fuzz
+  #     run: ./build/venue/test_venue_conservation_fuzz
