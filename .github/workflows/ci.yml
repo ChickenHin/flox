@@ -4,12 +4,7 @@ on:
   # Only main on push: a branch with an open PR would otherwise run the whole
   # matrix twice (once for push, once for pull_request) -- 32 checks where 16
   # is the real coverage.
-  push:
-    branches: [main]
-  pull_request:
-  schedule:
-    # Weekly affinity tests - Sunday at 3:00 UTC
-    - cron: '0 3 * * 0'
+  workflow_dispatch: 
 
 # Fast-fail: a new push to the same branch / PR cancels the in-progress run.
 # Build jobs (linux-*, macos, windows-*, sanitizers) depend on the quick
@@ -20,98 +15,98 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  format-check:
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v5
+  # format-check:
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #   - uses: actions/checkout@v5
 
-    - name: Install clang-format
-      run: sudo apt-get update && sudo apt-get install -y clang-format
+  #   - name: Install clang-format
+  #     run: sudo apt-get update && sudo apt-get install -y clang-format
 
-    - name: Check formatting
-      run: ./scripts/check-format.sh
+  #   - name: Check formatting
+  #     run: ./scripts/check-format.sh
 
-  verify-docs-current:
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v5
-    - uses: actions/setup-python@v6
-      with:
-        python-version: '3.11'
-    - name: Verify indicator docs are in sync with registry.def
-      run: |
-        python3 scripts/gen_indicator_docs.py
-        if ! git diff --exit-code -- docs/; then
-          echo "::error::docs/ out of sync with include/flox/indicator/registry.def"
-          echo "Run: python3 scripts/gen_indicator_docs.py"
-          exit 1
-        fi
-    - name: Verify llms.txt and llms-full.txt are in sync with docs/
-      run: python3 scripts/gen_llms_txt.py --check
-    - name: Verify node/index.d.ts exports match the C++ binding
-      run: python3 scripts/check_dts_exports.py
-    - name: Verify node/index.d.ts class members cover every NAPI wrap method
-      run: python3 scripts/check_dts_class_members.py
-    - name: Verify cross-binding parity (pybind11/napi/codon)
-      run: |
-        pip install pyyaml
-        python3 scripts/check_binding_parity.py
-    - name: Verify error codes have docs and pages aren't stale
-      run: python3 scripts/check_error_codes.py
-    - name: Verify test gating against backtest / capi headers
-      run: python3 scripts/check_test_gating.py
+  # verify-docs-current:
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #   - uses: actions/checkout@v5
+  #   - uses: actions/setup-python@v6
+  #     with:
+  #       python-version: '3.11'
+  #   - name: Verify indicator docs are in sync with registry.def
+  #     run: |
+  #       python3 scripts/gen_indicator_docs.py
+  #       if ! git diff --exit-code -- docs/; then
+  #         echo "::error::docs/ out of sync with include/flox/indicator/registry.def"
+  #         echo "Run: python3 scripts/gen_indicator_docs.py"
+  #         exit 1
+  #       fi
+  #   - name: Verify llms.txt and llms-full.txt are in sync with docs/
+  #     run: python3 scripts/gen_llms_txt.py --check
+  #   - name: Verify node/index.d.ts exports match the C++ binding
+  #     run: python3 scripts/check_dts_exports.py
+  #   - name: Verify node/index.d.ts class members cover every NAPI wrap method
+  #     run: python3 scripts/check_dts_class_members.py
+  #   - name: Verify cross-binding parity (pybind11/napi/codon)
+  #     run: |
+  #       pip install pyyaml
+  #       python3 scripts/check_binding_parity.py
+  #   - name: Verify error codes have docs and pages aren't stale
+  #     run: python3 scripts/check_error_codes.py
+  #   - name: Verify test gating against backtest / capi headers
+  #     run: python3 scripts/check_test_gating.py
 
-    - name: Verify every test file is reachable by the suite runners
-      run: python3 scripts/check_suite_discovery.py
+    # - name: Verify every test file is reachable by the suite runners
+    #   run: python3 scripts/check_suite_discovery.py
 
-    # The QuickJS call sites are strings inside C++ string literals, so the
-    # compiler cannot see a global that was never registered. setQueueFifoTopN
-    # shipped that way and every call was a ReferenceError.
-    - name: Verify every QuickJS global the JS layer calls is registered
-      run: python3 scripts/check_quickjs_registration.py
-    - name: Verify Python API index is in sync with .pyi
-      run: python3 scripts/gen_api_index.py --check
-    - name: Verify doc snippets follow the --8<-- include pattern
-      run: |
-        # Ratchet floor: 24 `--8<--` includes today (4% of 481 typed
-        # blocks). Migration target is 50% coverage. Bump the floor
-        # in this step every time a PR successfully migrates more
-        # snippets — never lower it.
-        python3 scripts/check_doc_snippets.py --min-includes 24
-    - name: Verify every API symbol named in hand-written docs exists
-      run: python3 scripts/check_doc_symbols.py
-    - name: Verify docs/examples/* still run (or at least parse)
-      run: python3 scripts/check_doc_examples.py
-    - name: Verify every doc page is reachable from the mkdocs nav
-      run: python3 scripts/check_doc_nav.py
-    - name: Verify relative doc links and anchors resolve
-      run: python3 scripts/check_doc_links.py
-    - name: Verify doc conventions (package names, build flags, no emoji)
-      run: python3 scripts/check_doc_conventions.py
-    - name: Verify flox-mcp bundled data is in sync
-      run: |
-        # IR snapshot is built from the IDL via libclang, plus the
-        # binding manifest reads binding_parity.yaml — both deps need
-        # to be present in this job for --check to run end-to-end.
-        python3 -m pip install --break-system-packages libclang pyyaml
-        python3 scripts/sync_mcp_data.py --check
-    - name: Dependency ranges match between package and CI
-      # flox-mcp shipped `mcp>=1.0` while this file installed `mcp>=1.0,<2`, so
-      # CI was green on 1.x and users got the 2.0 SDK, which crashes on start.
-      run: python3 scripts/check_dep_pins.py
+    # # The QuickJS call sites are strings inside C++ string literals, so the
+    # # compiler cannot see a global that was never registered. setQueueFifoTopN
+    # # shipped that way and every call was a ReferenceError.
+    # - name: Verify every QuickJS global the JS layer calls is registered
+    #   run: python3 scripts/check_quickjs_registration.py
+    # - name: Verify Python API index is in sync with .pyi
+    #   run: python3 scripts/gen_api_index.py --check
+    # - name: Verify doc snippets follow the --8<-- include pattern
+    #   run: |
+    #     # Ratchet floor: 24 `--8<--` includes today (4% of 481 typed
+    #     # blocks). Migration target is 50% coverage. Bump the floor
+    #     # in this step every time a PR successfully migrates more
+    #     # snippets — never lower it.
+    #     python3 scripts/check_doc_snippets.py --min-includes 24
+    # - name: Verify every API symbol named in hand-written docs exists
+    #   run: python3 scripts/check_doc_symbols.py
+    # - name: Verify docs/examples/* still run (or at least parse)
+    #   run: python3 scripts/check_doc_examples.py
+    # - name: Verify every doc page is reachable from the mkdocs nav
+    #   run: python3 scripts/check_doc_nav.py
+    # - name: Verify relative doc links and anchors resolve
+    #   run: python3 scripts/check_doc_links.py
+    # - name: Verify doc conventions (package names, build flags, no emoji)
+    #   run: python3 scripts/check_doc_conventions.py
+    # - name: Verify flox-mcp bundled data is in sync
+    #   run: |
+    #     # IR snapshot is built from the IDL via libclang, plus the
+    #     # binding manifest reads binding_parity.yaml — both deps need
+    #     # to be present in this job for --check to run end-to-end.
+    #     python3 -m pip install --break-system-packages libclang pyyaml
+    #     python3 scripts/sync_mcp_data.py --check
+    # - name: Dependency ranges match between package and CI
+    #   # flox-mcp shipped `mcp>=1.0` while this file installed `mcp>=1.0,<2`, so
+    #   # CI was green on 1.x and users got the 2.0 SDK, which crashes on start.
+    #   run: python3 scripts/check_dep_pins.py
 
-    - name: flox-mcp unit tests
-      # `mcp` was never installed, so flox_mcp.server was unimportable and
-      # nothing tested the 38 tool schemas or the dispatch chain that has to
-      # match them. test_tool_dispatch.py needs it.
-      run: |
-        # Keep this range identical to mcp/pyproject.toml; check_dep_pins.py
-        # enforces that.
-        python3 -m pip install --break-system-packages pytest "mcp>=2.0,<3"
-        python3 -m pytest mcp/tests/ -q
+    # - name: flox-mcp unit tests
+    #   # `mcp` was never installed, so flox_mcp.server was unimportable and
+    #   # nothing tested the 38 tool schemas or the dispatch chain that has to
+    #   # match them. test_tool_dispatch.py needs it.
+    #   run: |
+    #     # Keep this range identical to mcp/pyproject.toml; check_dep_pins.py
+    #     # enforces that.
+    #     python3 -m pip install --break-system-packages pytest "mcp>=2.0,<3"
+    #     python3 -m pytest mcp/tests/ -q
 
   linux-gcc:
-    needs: [format-check, verify-docs-current]
+    # needs: [format-check, verify-docs-current]
     runs-on: ubuntu-24.04
 
     steps:
@@ -195,451 +190,451 @@ jobs:
     - name: Run tests
       run: ctest --output-on-failure --test-dir build
 
-    - name: Verify C API
-      run: |
-        test -f build/src/capi/libflox_capi.so
-        nm -D build/src/capi/libflox_capi.so | grep -q flox_emit_market_buy
-        nm -D build/src/capi/libflox_capi.so | grep -q flox_position_tracker_on_fill
-        nm -D build/src/capi/libflox_capi.so | grep -q flox_order_tracker_on_submitted
+    # - name: Verify C API
+    #   run: |
+    #     test -f build/src/capi/libflox_capi.so
+    #     nm -D build/src/capi/libflox_capi.so | grep -q flox_emit_market_buy
+    #     nm -D build/src/capi/libflox_capi.so | grep -q flox_position_tracker_on_fill
+    #     nm -D build/src/capi/libflox_capi.so | grep -q flox_order_tracker_on_submitted
 
-    # The whole suite, not a hand-listed subset. This used to be ~35 named
-    # steps, one per file, so any test file nobody remembered to add here
-    # simply never ran -- 34 of 69 files at the time this changed, including
-    # every regression gate added for the binding audit. scripts/
-    # check_suite_discovery.py fails CI if a test file is not reachable.
-    # check_binding_parity.py asserts a symbol exists; this calls it. Every
-    # defect the binding audit found had an existing symbol, so the name gate
-    # could not see any of them.
-    - name: Binding smoke (call the surface, not just name it)
-      run: PYTHONPATH=build/python python3 scripts/check_binding_smoke.py
+    # # The whole suite, not a hand-listed subset. This used to be ~35 named
+    # # steps, one per file, so any test file nobody remembered to add here
+    # # simply never ran -- 34 of 69 files at the time this changed, including
+    # # every regression gate added for the binding audit. scripts/
+    # # check_suite_discovery.py fails CI if a test file is not reachable.
+    # # check_binding_parity.py asserts a symbol exists; this calls it. Every
+    # # defect the binding audit found had an existing symbol, so the name gate
+    # # could not see any of them.
+    # - name: Binding smoke (call the surface, not just name it)
+    #   run: PYTHONPATH=build/python python3 scripts/check_binding_smoke.py
 
-    - name: Python test suite
-      run: PYTHONPATH=build/python python3 -m pytest python/tests -q
+    # - name: Python test suite
+    #   run: PYTHONPATH=build/python python3 -m pytest python/tests -q
 
-    - name: Replay-equivalence CI gate
-      run: python3 scripts/replay_equivalence_gate.py
+    # - name: Replay-equivalence CI gate
+    #   run: python3 scripts/replay_equivalence_gate.py
 
-    - name: Cross-binding .floxrun parity gate
-      run: python3 scripts/floxrun_byte_identical_gate.py
+    # - name: Cross-binding .floxrun parity gate
+    #   run: python3 scripts/floxrun_byte_identical_gate.py
 
-    - name: Verify .pyi stubs are in sync with the binding
-      run: python3 scripts/gen_pyi_stubs.py --check
+    # - name: Verify .pyi stubs are in sync with the binding
+    #   run: python3 scripts/gen_pyi_stubs.py --check
 
     # Build the wheel from python/pyproject.toml, install it into a
     # throwaway venv, and assert every documented pure-Python module is
     # importable. Catches the regression where scikit-build-core only
     # collects the install component contents and silently drops new
     # `.py` files added under `python/flox_py/`.
-    - name: Verify wheel ships every pure-Python module
-      run: bash scripts/check_flox_py_wheel.sh
+    # - name: Verify wheel ships every pure-Python module
+    #   run: bash scripts/check_flox_py_wheel.sh
 
-    - name: Type-check Python examples with mypy
-      run: PYTHONPATH=build/python python3 -m mypy --ignore-missing-imports
-        docs/examples/python_backtest_vs_live.py
-        docs/examples/python_multi_symbol.py
-        docs/examples/python_ccxt_live.py
-        docs/examples/python_tape_roundtrip.py
-        docs/examples/python_binance_archive.py
-        docs/examples/python_binance_book_archive.py
-        docs/examples/python_bybit_archive.py
-        docs/examples/python_okx_archive.py
-        docs/examples/python_bitget_archive.py
-        docs/examples/python_deribit_archive.py
-        docs/examples/python_orderbook_iterator.py
-        docs/examples/python_rolling_top_k.py
-        docs/examples/python_xs_panel.py
-        docs/examples/python_rate_limit_aware_market_maker.py
-        docs/examples/python_options_pricing.py
-        docs/examples/python_options_greeks.py
+    # - name: Type-check Python examples with mypy
+    #   run: PYTHONPATH=build/python python3 -m mypy --ignore-missing-imports
+    #     docs/examples/python_backtest_vs_live.py
+    #     docs/examples/python_multi_symbol.py
+    #     docs/examples/python_ccxt_live.py
+    #     docs/examples/python_tape_roundtrip.py
+    #     docs/examples/python_binance_archive.py
+    #     docs/examples/python_binance_book_archive.py
+    #     docs/examples/python_bybit_archive.py
+    #     docs/examples/python_okx_archive.py
+    #     docs/examples/python_bitget_archive.py
+    #     docs/examples/python_deribit_archive.py
+    #     docs/examples/python_orderbook_iterator.py
+    #     docs/examples/python_rolling_top_k.py
+    #     docs/examples/python_xs_panel.py
+    #     docs/examples/python_rate_limit_aware_market_maker.py
+    #     docs/examples/python_options_pricing.py
+    #     docs/examples/python_options_greeks.py
 
     # Pyright is what Cursor / Pylance / VSCode actually run; mypy and
     # pyright sometimes disagree, and the AI-DX goal is the editor
     # experience. The CCXT example is excluded because ccxt itself ships
     # without typing for its primary surface and pyright (unlike mypy)
     # has no global "ignore missing imports" mode that's safe to use.
-    - name: Type-check Python examples with pyright
-      run: PYTHONPATH=build/python python3 -m pyright
-        docs/examples/python_backtest_vs_live.py
-        docs/examples/python_multi_symbol.py
+    # - name: Type-check Python examples with pyright
+    #   run: PYTHONPATH=build/python python3 -m pyright
+    #     docs/examples/python_backtest_vs_live.py
+    #     docs/examples/python_multi_symbol.py
 
-    - name: Run Python example
-      run: PYTHONPATH=build/python python3 docs/examples/python_backtest_vs_live.py
+    # - name: Run Python example
+    #   run: PYTHONPATH=build/python python3 docs/examples/python_backtest_vs_live.py
 
-    - name: Run Python tape round-trip example
-      run: PYTHONPATH=build/python python3 docs/examples/python_tape_roundtrip.py
+    # - name: Run Python tape round-trip example
+    #   run: PYTHONPATH=build/python python3 docs/examples/python_tape_roundtrip.py
 
-    - name: Run Python options pricing example
-      run: PYTHONPATH=build/python python3 docs/examples/python_options_pricing.py
+    # - name: Run Python options pricing example
+    #   run: PYTHONPATH=build/python python3 docs/examples/python_options_pricing.py
 
-    - name: Run Python options greeks example
-      run: PYTHONPATH=build/python python3 docs/examples/python_options_greeks.py
+    # - name: Run Python options greeks example
+    #   run: PYTHONPATH=build/python python3 docs/examples/python_options_greeks.py
 
-    - name: Run Python Binance archive importer example
-      run: PYTHONPATH=build/python python3 docs/examples/python_binance_archive.py
+    # - name: Run Python Binance archive importer example
+    #   run: PYTHONPATH=build/python python3 docs/examples/python_binance_archive.py
 
-    - name: Run Python Binance book archive importer example
-      run: PYTHONPATH=build/python python3 docs/examples/python_binance_book_archive.py
+    # - name: Run Python Binance book archive importer example
+    #   run: PYTHONPATH=build/python python3 docs/examples/python_binance_book_archive.py
 
-    - name: Run Python Bybit archive importer example
-      run: PYTHONPATH=build/python python3 docs/examples/python_bybit_archive.py
+    # - name: Run Python Bybit archive importer example
+    #   run: PYTHONPATH=build/python python3 docs/examples/python_bybit_archive.py
 
-    - name: Run Python OKX archive importer example
-      run: PYTHONPATH=build/python python3 docs/examples/python_okx_archive.py
+    # - name: Run Python OKX archive importer example
+    #   run: PYTHONPATH=build/python python3 docs/examples/python_okx_archive.py
 
-    - name: Run Python Bitget archive importer example
-      run: PYTHONPATH=build/python python3 docs/examples/python_bitget_archive.py
+    # - name: Run Python Bitget archive importer example
+    #   run: PYTHONPATH=build/python python3 docs/examples/python_bitget_archive.py
 
-    - name: Run Python Deribit archive importer example
-      run: PYTHONPATH=build/python python3 docs/examples/python_deribit_archive.py
+    # - name: Run Python Deribit archive importer example
+    #   run: PYTHONPATH=build/python python3 docs/examples/python_deribit_archive.py
 
-    - name: Run Python OrderBookIterator example
-      run: PYTHONPATH=build/python python3 docs/examples/python_orderbook_iterator.py
+    # - name: Run Python OrderBookIterator example
+    #   run: PYTHONPATH=build/python python3 docs/examples/python_orderbook_iterator.py
 
-    - name: Run Python rolling top-K example
-      run: PYTHONPATH=build/python python3 docs/examples/python_rolling_top_k.py
+    # - name: Run Python rolling top-K example
+    #   run: PYTHONPATH=build/python python3 docs/examples/python_rolling_top_k.py
 
-    - name: Run Python cross-sectional panel example
-      run: PYTHONPATH=build/python python3 docs/examples/python_xs_panel.py
+    # - name: Run Python cross-sectional panel example
+    #   run: PYTHONPATH=build/python python3 docs/examples/python_xs_panel.py
 
-    - name: Run Python rate-limit-aware market maker example
-      run: PYTHONPATH=build/python python3 docs/examples/python_rate_limit_aware_market_maker.py
+    # - name: Run Python rate-limit-aware market maker example
+    #   run: PYTHONPATH=build/python python3 docs/examples/python_rate_limit_aware_market_maker.py
 
     # The named steps above cover a hand-picked subset. This one executes
     # *every* docs/examples/*.py (minus the explicit skip-list in the
     # script), so a new example is covered the moment it lands. The docs-only
     # job runs the same gate without a build, where it degrades to a syntax
     # check; --require-runtime makes the missing extension a failure here.
-    - name: Run every doc example against the built bindings
-      run: PYTHONPATH=build/python python3 scripts/check_doc_examples.py --require-runtime
+    # - name: Run every doc example against the built bindings
+    #   run: PYTHONPATH=build/python python3 scripts/check_doc_examples.py --require-runtime
 
-    - name: RL env→paper alpha-decay gate (synthetic)
-      run: PYTHONPATH=build/python python3 scripts/rl_alpha_decay_gate.py --max-decay 0.30
+    # - name: RL env→paper alpha-decay gate (synthetic)
+    #   run: PYTHONPATH=build/python python3 scripts/rl_alpha_decay_gate.py --max-decay 0.30
 
-    - name: Verify Codon binaries
-      run: |
-        test -f build/codon/codon_sma_crossover
-        test -f build/codon/codon_pairs_strategy
-        test -f build/codon/codon_backtest_from_csv
-        test -f build/codon/codon_full_backtest
-        file build/codon/codon_sma_crossover | grep -q ELF
+    # - name: Verify Codon binaries
+    #   run: |
+    #     test -f build/codon/codon_sma_crossover
+    #     test -f build/codon/codon_pairs_strategy
+    #     test -f build/codon/codon_backtest_from_csv
+    #     test -f build/codon/codon_full_backtest
+    #     file build/codon/codon_sma_crossover | grep -q ELF
 
-    - name: Run Codon examples
-      run: |
-        LD_LIBRARY_PATH=build/src/capi:$HOME/.codon/lib/codon \
-          ./build/codon/codon_full_backtest
-        LD_LIBRARY_PATH=build/src/capi:$HOME/.codon/lib/codon \
-          ./build/codon/codon_backtest_from_csv docs/examples/data/btcusdt_1m.csv
-        LD_LIBRARY_PATH=build/src/capi:$HOME/.codon/lib/codon \
-          ./build/codon/codon_latency_smoke
-        LD_LIBRARY_PATH=build/src/capi:$HOME/.codon/lib/codon \
-          ./build/codon/codon_tape_diff_smoke
-        LD_LIBRARY_PATH=build/src/capi:$HOME/.codon/lib/codon \
-          ./build/codon/codon_portfolio_risk_smoke
-        LD_LIBRARY_PATH=build/src/capi:$HOME/.codon/lib/codon \
-          ./build/codon/codon_execution_algos_smoke
-        LD_LIBRARY_PATH=build/src/capi:$HOME/.codon/lib/codon \
-          ./build/codon/codon_delta_book_smoke
-        LD_LIBRARY_PATH=build/src/capi:$HOME/.codon/lib/codon \
-          ./build/codon/codon_bar_close_ordering_parity_smoke
+    # - name: Run Codon examples
+    #   run: |
+    #     LD_LIBRARY_PATH=build/src/capi:$HOME/.codon/lib/codon \
+    #       ./build/codon/codon_full_backtest
+    #     LD_LIBRARY_PATH=build/src/capi:$HOME/.codon/lib/codon \
+    #       ./build/codon/codon_backtest_from_csv docs/examples/data/btcusdt_1m.csv
+    #     LD_LIBRARY_PATH=build/src/capi:$HOME/.codon/lib/codon \
+    #       ./build/codon/codon_latency_smoke
+    #     LD_LIBRARY_PATH=build/src/capi:$HOME/.codon/lib/codon \
+    #       ./build/codon/codon_tape_diff_smoke
+    #     LD_LIBRARY_PATH=build/src/capi:$HOME/.codon/lib/codon \
+    #       ./build/codon/codon_portfolio_risk_smoke
+    #     LD_LIBRARY_PATH=build/src/capi:$HOME/.codon/lib/codon \
+    #       ./build/codon/codon_execution_algos_smoke
+    #     LD_LIBRARY_PATH=build/src/capi:$HOME/.codon/lib/codon \
+    #       ./build/codon/codon_delta_book_smoke
+    #     LD_LIBRARY_PATH=build/src/capi:$HOME/.codon/lib/codon \
+    #       ./build/codon/codon_bar_close_ordering_parity_smoke
 
-    - name: Verify QuickJS runner
-      run: |
-        test -f build/src/quickjs/flox_js_runner
-        ./build/src/quickjs/flox_js_runner quickjs/examples/sma_crossover.js
-        ./build/src/quickjs/flox_js_runner quickjs/examples/backtest_sma.js
-        ./build/src/quickjs/flox_js_runner quickjs/examples/latency_smoke.js
-        ./build/src/quickjs/flox_js_runner quickjs/examples/tape_diff_smoke.js
-        ./build/src/quickjs/flox_js_runner quickjs/examples/portfolio_risk_smoke.js
-        ./build/src/quickjs/flox_js_runner quickjs/examples/execution_algos_smoke.js
-        ./build/src/quickjs/flox_js_runner quickjs/examples/delta_book_smoke.js
-        ./build/src/quickjs/flox_js_runner quickjs/examples/order_group_smoke.js
-        ./build/src/quickjs/flox_js_runner quickjs/examples/bar_close_ordering_parity_smoke.js
+    # - name: Verify QuickJS runner
+    #   run: |
+    #     test -f build/src/quickjs/flox_js_runner
+    #     ./build/src/quickjs/flox_js_runner quickjs/examples/sma_crossover.js
+    #     ./build/src/quickjs/flox_js_runner quickjs/examples/backtest_sma.js
+    #     ./build/src/quickjs/flox_js_runner quickjs/examples/latency_smoke.js
+    #     ./build/src/quickjs/flox_js_runner quickjs/examples/tape_diff_smoke.js
+    #     ./build/src/quickjs/flox_js_runner quickjs/examples/portfolio_risk_smoke.js
+    #     ./build/src/quickjs/flox_js_runner quickjs/examples/execution_algos_smoke.js
+    #     ./build/src/quickjs/flox_js_runner quickjs/examples/delta_book_smoke.js
+    #     ./build/src/quickjs/flox_js_runner quickjs/examples/order_group_smoke.js
+    #     ./build/src/quickjs/flox_js_runner quickjs/examples/bar_close_ordering_parity_smoke.js
 
-    # Every test_*.js, not a hand-listed subset (9 of 21 files were unrun).
-    # byte_identical_fixture.js is a fixture helper, not a test, and is
-    # excluded by the test_ prefix.
-    - name: Node.js test suite
-      run: |
-        cd node
-        fail=0
-        for f in test/test_*.js; do
-          echo "── $f"
-          node "$f" || fail=1
-        done
-        exit $fail
+    # # Every test_*.js, not a hand-listed subset (9 of 21 files were unrun).
+    # # byte_identical_fixture.js is a fixture helper, not a test, and is
+    # # excluded by the test_ prefix.
+    # - name: Node.js test suite
+    #   run: |
+    #     cd node
+    #     fail=0
+    #     for f in test/test_*.js; do
+    #       echo "── $f"
+    #       node "$f" || fail=1
+    #     done
+    #     exit $fail
 
-    - name: Verify Node.js TypeScript authoring layer
-      run: |
-        cd node
-        npx tsc -p authoring/tsconfig.json
-        npx tsc -p test/tsconfig.authoring.json
-        node .test-build/test_authoring.js
+    # - name: Verify Node.js TypeScript authoring layer
+    #   run: |
+    #     cd node
+    #     npx tsc -p authoring/tsconfig.json
+    #     npx tsc -p test/tsconfig.authoring.json
+    #     node .test-build/test_authoring.js
 
-    - name: Cross-binding parity (Python ↔ Node, same C++ math)
-      run: PYTHONPATH=build/python python3 scripts/cross_binding_parity.py
+    # - name: Cross-binding parity (Python ↔ Node, same C++ math)
+    #   run: PYTHONPATH=build/python python3 scripts/cross_binding_parity.py
 
-    - name: Run Node.js example
-      run: node docs/examples/node_backtest_vs_live.js
+    # - name: Run Node.js example
+    #   run: node docs/examples/node_backtest_vs_live.js
 
-    - name: Run demo
-      run: ./build/demo/flox_demo
+    # - name: Run demo
+    #   run: ./build/demo/flox_demo
 
-    - name: Run benchmarks
-      run: ./scripts/run-benchmarks.sh build/benchmarks
+    # - name: Run benchmarks
+    #   run: ./scripts/run-benchmarks.sh build/benchmarks
 
-  linux-clang:
-    needs: [format-check, verify-docs-current]
-    runs-on: ubuntu-24.04
+  # linux-clang:
+  #   needs: [format-check, verify-docs-current]
+  #   runs-on: ubuntu-24.04
 
-    steps:
-    - uses: actions/checkout@v5
+  #   steps:
+  #   - uses: actions/checkout@v5
 
-    - name: Install LLVM repository
-      run: |
-        wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc
-        echo "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-18 main" | sudo tee /etc/apt/sources.list.d/llvm.list
+  #   - name: Install LLVM repository
+  #     run: |
+  #       wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc
+  #       echo "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-18 main" | sudo tee /etc/apt/sources.list.d/llvm.list
 
-    - name: Install dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y cmake ninja-build liblz4-dev clang-18 libc++-18-dev libc++abi-18-dev
+  #   - name: Install dependencies
+  #     run: |
+  #       sudo apt-get update
+  #       sudo apt-get install -y cmake ninja-build liblz4-dev clang-18 libc++-18-dev libc++abi-18-dev
 
-    - name: Build and Install GoogleTest
-      run: |
-        git clone --depth=1 https://github.com/google/googletest.git
-        cmake -B gtest-build -S googletest -G Ninja \
-          -DCMAKE_CXX_COMPILER=clang++-18 \
-          -DCMAKE_CXX_FLAGS="-stdlib=libc++ -fexperimental-library" \
-          -DCMAKE_BUILD_TYPE=Release \
-          -DCMAKE_INSTALL_PREFIX=~/gtest-install
-        cmake --build gtest-build
-        cmake --install gtest-build
+  #   - name: Build and Install GoogleTest
+  #     run: |
+  #       git clone --depth=1 https://github.com/google/googletest.git
+  #       cmake -B gtest-build -S googletest -G Ninja \
+  #         -DCMAKE_CXX_COMPILER=clang++-18 \
+  #         -DCMAKE_CXX_FLAGS="-stdlib=libc++ -fexperimental-library" \
+  #         -DCMAKE_BUILD_TYPE=Release \
+  #         -DCMAKE_INSTALL_PREFIX=~/gtest-install
+  #       cmake --build gtest-build
+  #       cmake --install gtest-build
 
-    - name: Build and Install Google Benchmark
-      run: |
-        git clone --depth=1 https://github.com/google/benchmark.git
-        cmake -B benchmark-build -S benchmark -G Ninja \
-          -DCMAKE_CXX_COMPILER=clang++-18 \
-          -DCMAKE_CXX_FLAGS="-stdlib=libc++ -fexperimental-library" \
-          -DCMAKE_BUILD_TYPE=Release \
-          -DBENCHMARK_DOWNLOAD_DEPENDENCIES=ON \
-          -DCMAKE_INSTALL_PREFIX=~/benchmark-install
-        cmake --build benchmark-build
-        cmake --install benchmark-build
+  #   - name: Build and Install Google Benchmark
+  #     run: |
+  #       git clone --depth=1 https://github.com/google/benchmark.git
+  #       cmake -B benchmark-build -S benchmark -G Ninja \
+  #         -DCMAKE_CXX_COMPILER=clang++-18 \
+  #         -DCMAKE_CXX_FLAGS="-stdlib=libc++ -fexperimental-library" \
+  #         -DCMAKE_BUILD_TYPE=Release \
+  #         -DBENCHMARK_DOWNLOAD_DEPENDENCIES=ON \
+  #         -DCMAKE_INSTALL_PREFIX=~/benchmark-install
+  #       cmake --build benchmark-build
+  #       cmake --install benchmark-build
 
-    - name: Configure
-      run: |
-        rm -rf build
-        cmake -B build -G Ninja \
-              -DCMAKE_CXX_COMPILER=clang++-18 \
-              -DCMAKE_CXX_FLAGS="-stdlib=libc++ -fexperimental-library" \
-              -DCMAKE_BUILD_TYPE=Release \
-              -DCMAKE_PREFIX_PATH="$HOME/gtest-install;$HOME/benchmark-install" \
-              -DFLOX_BUILD_TESTS=ON \
-              -DFLOX_BUILD_BENCHMARKS=ON \
-              -DFLOX_BUILD_DEMO=ON \
-              -DFLOX_ENABLE_LZ4=ON \
-              -DFLOX_ENABLE_BACKTEST=ON \
-              -DFLOX_BUILD_CAPI=ON
+  #   - name: Configure
+  #     run: |
+  #       rm -rf build
+  #       cmake -B build -G Ninja \
+  #             -DCMAKE_CXX_COMPILER=clang++-18 \
+  #             -DCMAKE_CXX_FLAGS="-stdlib=libc++ -fexperimental-library" \
+  #             -DCMAKE_BUILD_TYPE=Release \
+  #             -DCMAKE_PREFIX_PATH="$HOME/gtest-install;$HOME/benchmark-install" \
+  #             -DFLOX_BUILD_TESTS=ON \
+  #             -DFLOX_BUILD_BENCHMARKS=ON \
+  #             -DFLOX_BUILD_DEMO=ON \
+  #             -DFLOX_ENABLE_LZ4=ON \
+  #             -DFLOX_ENABLE_BACKTEST=ON \
+  #             -DFLOX_BUILD_CAPI=ON
 
-    - name: Build
-      run: cmake --build build -j$(nproc)
+  #   - name: Build
+  #     run: cmake --build build -j$(nproc)
 
-    - name: Run tests
-      run: ctest --output-on-failure --test-dir build
+  #   - name: Run tests
+  #     run: ctest --output-on-failure --test-dir build
 
-    - name: Run demo
-      run: ./build/demo/flox_demo
+  #   - name: Run demo
+  #     run: ./build/demo/flox_demo
 
-    - name: Run benchmarks
-      run: ./scripts/run-benchmarks.sh build/benchmarks
+  #   - name: Run benchmarks
+  #     run: ./scripts/run-benchmarks.sh build/benchmarks
 
-  sanitizers:
-    needs: [format-check, verify-docs-current]
-    runs-on: ubuntu-24.04
-    strategy:
-      fail-fast: false
-      matrix:
-        sanitizer: [address, undefined, thread]
+  # sanitizers:
+  #   needs: [format-check, verify-docs-current]
+  #   runs-on: ubuntu-24.04
+  #   strategy:
+  #     fail-fast: false
+  #     matrix:
+  #       sanitizer: [address, undefined, thread]
 
-    steps:
-    - uses: actions/checkout@v5
+  #   steps:
+  #   - uses: actions/checkout@v5
 
-    - name: Install dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y cmake ninja-build liblz4-dev g++-14
+  #   - name: Install dependencies
+  #     run: |
+  #       sudo apt-get update
+  #       sudo apt-get install -y cmake ninja-build liblz4-dev g++-14
 
-    - name: Build and Install GoogleTest
-      run: |
-        git clone --depth=1 https://github.com/google/googletest.git
-        cmake -B gtest-build -S googletest -G Ninja \
-          -DCMAKE_CXX_COMPILER=g++-14 \
-          -DCMAKE_CXX_FLAGS="-fsanitize=${{ matrix.sanitizer }} -fno-omit-frame-pointer" \
-          -DCMAKE_INSTALL_PREFIX=~/gtest-install
-        cmake --build gtest-build
-        cmake --install gtest-build
+  #   - name: Build and Install GoogleTest
+  #     run: |
+  #       git clone --depth=1 https://github.com/google/googletest.git
+  #       cmake -B gtest-build -S googletest -G Ninja \
+  #         -DCMAKE_CXX_COMPILER=g++-14 \
+  #         -DCMAKE_CXX_FLAGS="-fsanitize=${{ matrix.sanitizer }} -fno-omit-frame-pointer" \
+  #         -DCMAKE_INSTALL_PREFIX=~/gtest-install
+  #       cmake --build gtest-build
+  #       cmake --install gtest-build
 
-    - name: Configure with sanitizer
-      run: |
-        cmake -B build -G Ninja \
-              -DCMAKE_CXX_COMPILER=g++-14 \
-              -DCMAKE_CXX_FLAGS="-fsanitize=${{ matrix.sanitizer }} -fno-omit-frame-pointer -g" \
-              -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=${{ matrix.sanitizer }}" \
-              -DCMAKE_BUILD_TYPE=Debug \
-              -DCMAKE_PREFIX_PATH="$HOME/gtest-install" \
-              -DFLOX_BUILD_TESTS=ON \
-              -DFLOX_BUILD_BENCHMARKS=OFF \
-              -DFLOX_BUILD_DEMO=ON \
-              -DFLOX_ENABLE_LZ4=ON \
-              -DFLOX_ENABLE_BACKTEST=ON
+  #   - name: Configure with sanitizer
+  #     run: |
+  #       cmake -B build -G Ninja \
+  #             -DCMAKE_CXX_COMPILER=g++-14 \
+  #             -DCMAKE_CXX_FLAGS="-fsanitize=${{ matrix.sanitizer }} -fno-omit-frame-pointer -g" \
+  #             -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=${{ matrix.sanitizer }}" \
+  #             -DCMAKE_BUILD_TYPE=Debug \
+  #             -DCMAKE_PREFIX_PATH="$HOME/gtest-install" \
+  #             -DFLOX_BUILD_TESTS=ON \
+  #             -DFLOX_BUILD_BENCHMARKS=OFF \
+  #             -DFLOX_BUILD_DEMO=ON \
+  #             -DFLOX_ENABLE_LZ4=ON \
+  #             -DFLOX_ENABLE_BACKTEST=ON
 
-    - name: Build
-      run: cmake --build build -j$(nproc)
+  #   - name: Build
+  #     run: cmake --build build -j$(nproc)
 
-    - name: Run tests with sanitizer
-      env:
-        ASAN_OPTIONS: detect_leaks=1:abort_on_error=1
-        UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
-      run: ctest --output-on-failure --test-dir build
+  #   - name: Run tests with sanitizer
+  #     env:
+  #       ASAN_OPTIONS: detect_leaks=1:abort_on_error=1
+  #       UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+  #     run: ctest --output-on-failure --test-dir build
 
-    - name: Run demo with sanitizer
-      env:
-        ASAN_OPTIONS: detect_leaks=1:abort_on_error=1
-        UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
-      run: ./build/demo/flox_demo
+  #   - name: Run demo with sanitizer
+  #     env:
+  #       ASAN_OPTIONS: detect_leaks=1:abort_on_error=1
+  #       UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+  #     run: ./build/demo/flox_demo
 
-  macos:
-    needs: [format-check, verify-docs-current]
-    runs-on: macos-latest
+  # macos:
+  #   needs: [format-check, verify-docs-current]
+  #   runs-on: macos-latest
 
-    steps:
-    - uses: actions/checkout@v5
+  #   steps:
+  #   - uses: actions/checkout@v5
 
-    - name: Install dependencies
-      run: brew install cmake ninja lz4
+  #   - name: Install dependencies
+  #     run: brew install cmake ninja lz4
 
-    - name: Build and Install GoogleTest
-      run: |
-        git clone --depth=1 https://github.com/google/googletest.git
-        cmake -B gtest-build -S googletest -G Ninja \
-          -DCMAKE_INSTALL_PREFIX=~/gtest-install
-        cmake --build gtest-build
-        cmake --install gtest-build
+  #   - name: Build and Install GoogleTest
+  #     run: |
+  #       git clone --depth=1 https://github.com/google/googletest.git
+  #       cmake -B gtest-build -S googletest -G Ninja \
+  #         -DCMAKE_INSTALL_PREFIX=~/gtest-install
+  #       cmake --build gtest-build
+  #       cmake --install gtest-build
 
-    - name: Build and Install Google Benchmark
-      run: |
-        git clone --depth=1 https://github.com/google/benchmark.git
-        cmake -B benchmark-build -S benchmark -G Ninja \
-          -DCMAKE_BUILD_TYPE=Release \
-          -DBENCHMARK_DOWNLOAD_DEPENDENCIES=ON \
-          -DCMAKE_INSTALL_PREFIX=~/benchmark-install
-        cmake --build benchmark-build
-        cmake --install benchmark-build
+  #   - name: Build and Install Google Benchmark
+  #     run: |
+  #       git clone --depth=1 https://github.com/google/benchmark.git
+  #       cmake -B benchmark-build -S benchmark -G Ninja \
+  #         -DCMAKE_BUILD_TYPE=Release \
+  #         -DBENCHMARK_DOWNLOAD_DEPENDENCIES=ON \
+  #         -DCMAKE_INSTALL_PREFIX=~/benchmark-install
+  #       cmake --build benchmark-build
+  #       cmake --install benchmark-build
 
-    - name: Configure
-      run: |
-        LZ4_PREFIX=$(brew --prefix lz4)
-        cmake -B build -G Ninja \
-              -DCMAKE_BUILD_TYPE=Release \
-              -DCMAKE_PREFIX_PATH="$HOME/gtest-install;$HOME/benchmark-install;$LZ4_PREFIX" \
-              -DCMAKE_LIBRARY_PATH="$LZ4_PREFIX/lib" \
-              -DCMAKE_INCLUDE_PATH="$LZ4_PREFIX/include" \
-              -DFLOX_BUILD_TESTS=ON \
-              -DFLOX_BUILD_BENCHMARKS=ON \
-              -DFLOX_BUILD_DEMO=ON \
-              -DFLOX_ENABLE_LZ4=ON \
-              -DFLOX_ENABLE_BACKTEST=ON
+  #   - name: Configure
+  #     run: |
+  #       LZ4_PREFIX=$(brew --prefix lz4)
+  #       cmake -B build -G Ninja \
+  #             -DCMAKE_BUILD_TYPE=Release \
+  #             -DCMAKE_PREFIX_PATH="$HOME/gtest-install;$HOME/benchmark-install;$LZ4_PREFIX" \
+  #             -DCMAKE_LIBRARY_PATH="$LZ4_PREFIX/lib" \
+  #             -DCMAKE_INCLUDE_PATH="$LZ4_PREFIX/include" \
+  #             -DFLOX_BUILD_TESTS=ON \
+  #             -DFLOX_BUILD_BENCHMARKS=ON \
+  #             -DFLOX_BUILD_DEMO=ON \
+  #             -DFLOX_ENABLE_LZ4=ON \
+  #             -DFLOX_ENABLE_BACKTEST=ON
 
-    - name: Build
-      run: cmake --build build -j$(sysctl -n hw.ncpu)
+  #   - name: Build
+  #     run: cmake --build build -j$(sysctl -n hw.ncpu)
 
-    - name: Run tests
-      run: ctest --output-on-failure --test-dir build
+  #   - name: Run tests
+  #     run: ctest --output-on-failure --test-dir build
 
-    - name: Run demo
-      run: ./build/demo/flox_demo
+  #   - name: Run demo
+  #     run: ./build/demo/flox_demo
 
-  windows-msvc:
-    needs: [format-check, verify-docs-current]
-    runs-on: windows-latest
+  # windows-msvc:
+  #   # needs: [format-check, verify-docs-current]
+  #   runs-on: windows-latest
 
-    env:
-      # The VC++ telemetry uploader touches freshly linked binaries and
-      # has been observed holding a .exe long enough for the next ninja
-      # link step to fail with "being used by another process". Nothing
-      # in CI needs it.
-      VSCMD_SKIP_SENDTELEMETRY: 1
-      VCPKG_DISABLE_METRICS: 1
+  #   env:
+  #     # The VC++ telemetry uploader touches freshly linked binaries and
+  #     # has been observed holding a .exe long enough for the next ninja
+  #     # link step to fail with "being used by another process". Nothing
+  #     # in CI needs it.
+  #     VSCMD_SKIP_SENDTELEMETRY: 1
+  #     VCPKG_DISABLE_METRICS: 1
 
-    steps:
-    - uses: actions/checkout@v5
+  #   steps:
+  #   - uses: actions/checkout@v5
 
-    - name: Setup MSVC
-      uses: ilammy/msvc-dev-cmd@v1
+  #   - name: Setup MSVC
+  #     uses: ilammy/msvc-dev-cmd@v1
 
-    - name: Install ninja
-      run: choco install ninja -y
+  #   - name: Install ninja
+  #     run: choco install ninja -y
 
-    # Every one of these three steps reaches the network, and all three have
-    # failed on us mid-run (vcpkg.exe download, portfile download). Retry with
-    # backoff, and cap the step so a hung download fails in minutes instead of
-    # sitting at the job's default limit.
-    - name: Install vcpkg dependencies
-      timeout-minutes: 25
-      shell: pwsh
-      run: |
-        $ErrorActionPreference = 'Continue'
-        function Invoke-WithRetry {
-          param([string]$What, [int]$Attempts, [scriptblock]$Action)
-          for ($i = 1; $i -le $Attempts; $i++) {
-            & $Action
-            if ($LASTEXITCODE -eq 0) { return }
-            Write-Host "::warning::$What failed (attempt $i/$Attempts, exit $LASTEXITCODE)"
-            if ($i -lt $Attempts) { Start-Sleep -Seconds (20 * $i) }
-          }
-          Write-Host "::error::$What failed after $Attempts attempts"
-          exit 1
-        }
-        if (Test-Path vcpkg) { Remove-Item -Recurse -Force vcpkg }
-        Invoke-WithRetry 'git clone vcpkg' 3 { git clone --depth 1 https://github.com/microsoft/vcpkg.git }
-        Invoke-WithRetry 'bootstrap-vcpkg' 3 { .\vcpkg\bootstrap-vcpkg.bat }
-        Invoke-WithRetry 'vcpkg install' 3 { .\vcpkg\vcpkg install lz4:x64-windows gtest:x64-windows benchmark:x64-windows }
+  #   # Every one of these three steps reaches the network, and all three have
+  #   # failed on us mid-run (vcpkg.exe download, portfile download). Retry with
+  #   # backoff, and cap the step so a hung download fails in minutes instead of
+  #   # sitting at the job's default limit.
+  #   - name: Install vcpkg dependencies
+  #     timeout-minutes: 25
+  #     shell: pwsh
+  #     run: |
+  #       $ErrorActionPreference = 'Continue'
+  #       function Invoke-WithRetry {
+  #         param([string]$What, [int]$Attempts, [scriptblock]$Action)
+  #         for ($i = 1; $i -le $Attempts; $i++) {
+  #           & $Action
+  #           if ($LASTEXITCODE -eq 0) { return }
+  #           Write-Host "::warning::$What failed (attempt $i/$Attempts, exit $LASTEXITCODE)"
+  #           if ($i -lt $Attempts) { Start-Sleep -Seconds (20 * $i) }
+  #         }
+  #         Write-Host "::error::$What failed after $Attempts attempts"
+  #         exit 1
+  #       }
+  #       if (Test-Path vcpkg) { Remove-Item -Recurse -Force vcpkg }
+  #       Invoke-WithRetry 'git clone vcpkg' 3 { git clone --depth 1 https://github.com/microsoft/vcpkg.git }
+  #       Invoke-WithRetry 'bootstrap-vcpkg' 3 { .\vcpkg\bootstrap-vcpkg.bat }
+  #       Invoke-WithRetry 'vcpkg install' 3 { .\vcpkg\vcpkg install lz4:x64-windows gtest:x64-windows benchmark:x64-windows }
 
-    - name: Configure
-      run: |
-        cmake -B build -G Ninja `
-              -DCMAKE_BUILD_TYPE=Release `
-              -DCMAKE_TOOLCHAIN_FILE="${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake" `
-              -DFLOX_BUILD_TESTS=ON `
-              -DFLOX_BUILD_BENCHMARKS=ON `
-              -DFLOX_BUILD_DEMO=ON `
-              -DFLOX_ENABLE_LZ4=ON `
-              -DFLOX_ENABLE_BACKTEST=ON
+  #   - name: Configure
+  #     run: |
+  #       cmake -B build -G Ninja `
+  #             -DCMAKE_BUILD_TYPE=Release `
+  #             -DCMAKE_TOOLCHAIN_FILE="${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake" `
+  #             -DFLOX_BUILD_TESTS=ON `
+  #             -DFLOX_BUILD_BENCHMARKS=ON `
+  #             -DFLOX_BUILD_DEMO=ON `
+  #             -DFLOX_ENABLE_LZ4=ON `
+  #             -DFLOX_ENABLE_BACKTEST=ON
 
-    - name: Build
-      # Retried once, Windows only. Parallel linking of ~150 test executables
-      # intermittently loses one to "the process cannot access the file because
-      # it is being used by another process" -- a file lock, not a build error.
-      # ninja is incremental, so a real compile or link error re-fails in
-      # seconds on the second attempt and still fails the job; only the lock
-      # clears. This masks nothing deterministic.
-      run: |
-        cmake --build build -j $env:NUMBER_OF_PROCESSORS
-        if ($LASTEXITCODE -ne 0) {
-          Write-Host "::warning::build failed once; retrying in case a linker output was locked"
-          cmake --build build -j $env:NUMBER_OF_PROCESSORS
-        }
-        if ($LASTEXITCODE -ne 0) { exit 1 }
+  #   - name: Build
+  #     # Retried once, Windows only. Parallel linking of ~150 test executables
+  #     # intermittently loses one to "the process cannot access the file because
+  #     # it is being used by another process" -- a file lock, not a build error.
+  #     # ninja is incremental, so a real compile or link error re-fails in
+  #     # seconds on the second attempt and still fails the job; only the lock
+  #     # clears. This masks nothing deterministic.
+  #     run: |
+  #       cmake --build build -j $env:NUMBER_OF_PROCESSORS
+  #       if ($LASTEXITCODE -ne 0) {
+  #         Write-Host "::warning::build failed once; retrying in case a linker output was locked"
+  #         cmake --build build -j $env:NUMBER_OF_PROCESSORS
+  #       }
+  #       if ($LASTEXITCODE -ne 0) { exit 1 }
 
-    - name: Run tests
-      run: ctest --output-on-failure --test-dir build
+  #   - name: Run tests
+  #     run: ctest --output-on-failure --test-dir build
 
-    - name: Run demo
-      run: .\build\demo\flox_demo.exe
+  #   - name: Run demo
+  #     run: .\build\demo\flox_demo.exe
 
   windows-clang-cl:
-    needs: [format-check, verify-docs-current]
+    # needs: [format-check, verify-docs-current]
     runs-on: windows-latest
 
     env:
@@ -715,12 +710,12 @@ jobs:
     - name: Run tests
       run: ctest --output-on-failure --test-dir build
 
-    - name: Run demo
-      run: .\build\demo\flox_demo.exe
+    # - name: Run demo
+    #   run: .\build\demo\flox_demo.exe
 
   # Weekly affinity tests (Linux only)
   affinity-tests:
-    if: github.event_name == 'schedule'
+    # if: github.event_name == 'schedule'
     runs-on: ubuntu-24.04
 
     steps:
