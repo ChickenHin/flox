@@ -1,7 +1,7 @@
 name: codegen
 
 on:
-  push:
+  # push:
   pull_request:
 
 concurrency:
